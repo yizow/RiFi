@@ -1,4 +1,6 @@
+from __future__ import division
 import numpy as np
+from scipy import signal, ndimage
 
 class RiFi:
 
@@ -6,7 +8,10 @@ class RiFi:
     self.radio = radio
     return
 
-  def send(self, data):
+  def read(self, data):
+    self.data = data
+
+  def send(self, data=self.data):
     # Downsample image
     self.data = data
     self.downsampled = self.downsample()
@@ -21,7 +26,19 @@ class RiFi:
     self.postprocessed = self.postprocess()
     return self.postprocessed
 
-  def downsample(self, data=self.data):
+  def downsample(self, data=self.data, targetsize=(256,256)):
+    pad_len = targetsize - data.shape%targetsize
+    ds_ratio = (data.shape+pad_len)/targetsize
+
+    # zeropad
+    data = np.pad(data, ((0, pad_len[0]), (0, pad_len[1])), mode='edge')
+    
+    # downsample
+    # w = ???
+    data = signal.convolve2d(data, w, mode='same')
+
+    # decimate
+    data = data[::ds_ratio[0], ::ds_ratio[1]]
     return data
 
   def preprocess(self, data=self.downsampled):
