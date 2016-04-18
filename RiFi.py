@@ -2,6 +2,8 @@ from __future__ import division
 import numpy as np
 from scipy import signal, ndimage, misc
 
+image_path = "Images/"
+
 class RiFi:
 
   def __init__(self, radio):
@@ -81,13 +83,15 @@ class Radio:
     self.receiver.receive(data)
     return 
 
-def PSNR(original, received, maxValue = 256):
+def PSNR(original, received, maxValue = 255):
   if original is RiFi:
     original = original.data
   if received is RiFi:
     received = received.postprocessed
+  original = original.astype('float64')
+  received = received.astype('float64')
   error2 = np.square(original - received)
-  return 10 * np.log(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
+  return 10 * np.log10(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
 
 R = RiFi(None)
 img = ndimage.imread('bird.jpg')
