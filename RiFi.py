@@ -26,7 +26,9 @@ class RiFi:
     self.postprocessed = self.postprocess()
     return self.postprocessed
 
-  def downsample(self, data=self.data, targetsize=(256,256)):
+  def downsample(self, data=None, targetsize=(256,256)):
+    if data == None:
+      data = self.data
     pad_len = targetsize - data.shape%targetsize
     ds_ratio = (data.shape+pad_len)/targetsize
 
@@ -41,16 +43,24 @@ class RiFi:
     data = data[::ds_ratio[0], ::ds_ratio[1]]
     return data
 
-  def preprocess(self, data=self.downsampled):
+  def preprocess(self, data=None):
+    if data == None:
+      data = self.downsampled
     return data
 
-  def encode(self, data=self.preprocessed):
+  def encode(self, data=None):
+    if data == None:
+      data = self.preprocessed
     return data
 
-  def decode(self, data=self.received):
+  def decode(self, data=None):
+    if data == None:
+      data = self.received
     return data
 
-  def postprocess(self, data=self.decoded):
+  def postprocess(self, data=None):
+    if data == None:
+      data = self.decoded
     return data
 
 
