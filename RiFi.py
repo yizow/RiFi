@@ -21,19 +21,29 @@ class RiFi:
     self.postprocessed = self.postprocess()
     return self.postprocessed
 
-  def downsample(self, data=self.data):
+  def downsample(self, data=None):
+    if data == None:
+      data = self.data
     return data
 
-  def preprocess(self, data=self.downsampled):
+  def preprocess(self, data=None):
+    if data == None:
+      data = self.downsampled
     return data
 
-  def encode(self, data=self.preprocessed):
+  def encode(self, data=None):
+    if data == None:
+      data = self.preprocessed
     return data
 
-  def decode(self, data=self.received):
+  def decode(self, data=None):
+    if data == None:
+      data = self.received
     return data
 
-  def postprocess(self, data=self.decoded):
+  def postprocess(self, data=None):
+    if data == None:
+      data = self.decoded
     return data
 
 
