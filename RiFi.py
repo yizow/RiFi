@@ -94,13 +94,13 @@ def PSNR(original, received, maxValue = 255):
   return 10 * np.log10(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
 
 R = RiFi(None)
-img = ndimage.imread('bird.jpg')
+img = ndimage.imread(image_path+'bird.jpg')
 R.read(img)
 ds = R.downsample(targetsize=(250, 350))
-misc.imsave('bird_ds.jpg', ds)
+misc.imsave(image_path+'bird_ds.jpg', ds)
 
 rs = R.upsample(data=ds)
-misc.imsave('bird_rs.jpg', rs)
+misc.imsave(image_path+'bird_rs.jpg', rs)
 
 # Sample Usage
 # transmitter = RiFi()
