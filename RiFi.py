@@ -2,6 +2,8 @@ from __future__ import division
 import numpy as np
 from scipy import signal, ndimage, misc
 
+image_path = "Images/"
+
 class RiFi:
 
   def __init__(self, radio):
@@ -13,7 +15,7 @@ class RiFi:
     self.original_dims = data.shape
 
   def send(self, data=None):
-    if data == None:
+    if data is None:
       data = self.data
 
     # Downsample image
@@ -31,7 +33,7 @@ class RiFi:
     return self.postprocessed
 
   def downsample(self, data=None, targetsize=(256,256)):
-    if data == None:
+    if data is None:
       data = self.data
     
     data = signal.resample(data, targetsize[0], axis=0)
@@ -39,32 +41,34 @@ class RiFi:
 
     return data
 
-  def upsample(self, data=None):
-    if data == None:
+  def upsample(self, data=None, targetsize=None):
+    if data is None:
       data = self.data
+    if targetsize is None:
+      targetsize = self.original_dims
       
-    data = signal.resample(data, self.original_dims[0], axis=0)
-    data = signal.resample(data, self.original_dims[1], axis=1)
+    data = signal.resample(data, targetsize[0], axis=0)
+    data = signal.resample(data, targetsize[1], axis=1)
 
     return data
 
   def preprocess(self, data=None):
-    if data == None:
+    if data is None:
       data = self.downsampled
     return data
 
   def encode(self, data=None):
-    if data == None:
+    if data is None:
       data = self.preprocessed
     return data
 
   def decode(self, data=None):
-    if data == None:
+    if data is None:
       data = self.received
     return data
 
   def postprocess(self, data=None):
-    if data == None:
+    if data is None:
       data = self.decoded
     return data
   
@@ -85,28 +89,31 @@ class Radio:
     self.receiver.receive(data)
     return 
 
-def PSNR(original, received, maxValue = 256):
+def PSNR(original, received, maxValue = 255):
   if original is RiFi:
     original = original.data
   if received is RiFi:
     received = received.postprocessed
+  original = original.astype('float64')
+  received = received.astype('float64')
   error2 = np.square(original - received)
-  return 10 * np.log(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
+  return 10 * np.log10(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
 
 R = RiFi(None)
-img = ndimage.imread('bird.jpg')
+img = ndimage.imread(image_path+'bird.jpg')
 R.read(img)
 #ds = R.downsample(targetsize=(250, 350))
-#misc.imsave('bird_ds.jpg', ds)
 
 #rs = R.upsample()
-#misc.imsave('bird_rs.jpg', rs)
 
 ds2 = R.factordownsample(factor = 5)
 misc.imsave('bird_ds2.jpg', ds2)
 rs = R.upsample(ds2)
 misc.imsave('bird_rs2.jpg', rs)
 
+misc.imsave(image_path+'bird_ds.jpg', ds)
+
+misc.imsave(image_path+'bird_rs.jpg', rs)
 
 # Sample Usage
 # transmitter = RiFi()
