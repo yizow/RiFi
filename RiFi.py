@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 from scipy import signal, ndimage, misc
-
+import bitarray
 image_path = "Images/"
 
 class RiFi:
@@ -79,7 +79,17 @@ class RiFi:
     x = data.shape[1]
     return self.downsample(data, targetsize=(y//factor, x//factor))
 
-class Radio:
+  def im2bitarray(self, data=None):
+    if data == None:
+      data = self.data
+    output = []
+    for bits_ref in data.T:
+      asbit = map(lambda x:format(x, "08b"), bits_ref)
+      asbit = reduce(lambda x, y:x+y, asbit)
+      output.append(bitarray.bitarray(asbit))
+    return output
+
+class Radio:"""Only used for simulation purposes"""
   """Only used for simulation purposes"""
   def __init__(self, receiver):
     self.receiver = receiver
