@@ -67,7 +67,13 @@ class RiFi:
     if data == None:
       data = self.decoded
     return data
-
+  
+  def factordownsample(self, data=None, factor=5):
+    if data == None:
+      data = self.data
+    y = data.shape[0]
+    x = data.shape[1]
+    return self.downsample(data, targetsize=(y//factor, x//factor))
 
 class Radio:
   """Only used for simulation purposes"""
@@ -90,11 +96,17 @@ def PSNR(original, received, maxValue = 256):
 R = RiFi(None)
 img = ndimage.imread('bird.jpg')
 R.read(img)
-ds = R.downsample(targetsize=(250, 350))
-misc.imsave('bird_ds.jpg', ds)
+#ds = R.downsample(targetsize=(250, 350))
+#misc.imsave('bird_ds.jpg', ds)
 
-rs = R.upsample()
-misc.imsave('bird_rs.jpg', rs)
+#rs = R.upsample()
+#misc.imsave('bird_rs.jpg', rs)
+
+ds2 = R.factordownsample(factor = 5)
+misc.imsave('bird_ds2.jpg', ds2)
+rs = R.upsample(ds2)
+misc.imsave('bird_rs2.jpg', rs)
+
 
 # Sample Usage
 # transmitter = RiFi()
