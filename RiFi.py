@@ -109,6 +109,9 @@ def PSNR(original, received, maxValue = 255):
   error2 = np.square(original - received)
   return 10 * np.log10(maxValue**2 * np.prod(error2.shape) / np.sum(error2))
 
+
+
+                                                                   (0.104.6)
 R = RiFi(None)
 img = ndimage.imread(image_path+'bird.jpg')
 R.read(img)
