@@ -34,7 +34,7 @@ def decode(bitstream, huffmanRootDC, huffmanRootAC):
           node = node.right
         else:
           node = node.left
-      code = bitarray.bitarray(np.binary_repr(node.code), width=8)
+      code = bitarray.bitarray(np.binary_repr(node.code, width=8))
       size = int(code.to01(), 2)
       if size == 0:
         diffDC = 0
