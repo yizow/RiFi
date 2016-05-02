@@ -2,23 +2,25 @@ import numpy as np
 import bitarray
 import Queue
 
-def encode(DCT):
+def encode(DCT, huffmanTableDC, huffmanTableAC):
   """Performs DCPM on DC components, and RLE on AC components
   Expects an N*64 matrix, where each row is a single MCU
   DCT[:,0] are the DC components
   Outputs a bitstream
   """
   DCValues = DCPM(DCT[:, 0] )
-  DCBits = [encodeDC(value) for value in DCValues]
+  DCBits = [encodeDC(value, huffmanTableDC) for value in DCValues]
 
   ACValues = DCT[:,1:]
-  ACBits = [encodeAC(values) for values in ACValues]
+  ACBits = [encodeAC(values, huffmanTableAC) for values in ACValues]
   bits = bitarray.bitarray()
   for i in range(len(DCBits)):
     bits += DCBits[i] + ACBits[i]
   return bits
 
-def decode(bitstream):
+def decode(bitstream, huffmanRootDC, huffmanRootAC):
+  """Expects a bitstream, outputs an N*64 matrix
+  """
   bits = iter(bitstream)
   DCValues = np.array([])
   ACValues = []
@@ -26,9 +28,13 @@ def decode(bitstream):
   while True:
     try: 
       # DC Value
-      code = bitarray.bitarray()
-      for _ in range(8):
-        code.append(bits.next())
+      node = huffmanRootDC
+      while node.code == None:
+        if bits.next():
+          node = node.right
+        else:
+          node = node.left
+      code = bitarray.bitarray(np.binary_repr(node.code), width=8)
       size = int(code.to01(), 2)
       if size == 0:
         diffDC = 0
@@ -50,9 +56,13 @@ def decode(bitstream):
       values = np.zeros(63)
       index = 0
       while index < len(values):
-        code = bitarray.bitarray()
-        for _ in range(8):
-          code.append(bits.next())
+        node = huffmanRootAC
+        while node.code == None:
+          if bits.next():
+            node = node.right
+          else:
+            node = node.left
+        code = bitarray.bitarray(np.binary_repr(node.code, width=8))
         zeroRun = int(code[:4].to01(), 2)
         size = int(code[4:].to01(), 2)
         # End Of Block
@@ -87,38 +97,39 @@ def DCPM(values):
   post = np.append(np.array(values), 0)
   return (post - pre)[:-1]
 
-def encodeDC(value):
+def encodeDC(value, table):
   b = bitarray.bitarray()
   if value == 0:
     # print value, bitarray.bitarray(np.binary_repr(0, width=8))
-    return bitarray.bitarray(np.binary_repr(0, width=8))
+    return bitarray.bitarray(table[0])
   size = int(np.log2(abs(value))) + 1
-  b += bitarray.bitarray(np.binary_repr(size, width=8))
+  b += bitarray.bitarray(table[size])
   c = bitarray.bitarray(np.binary_repr(abs(value)))
   if value < 0:
     c.invert()
   # print value, b, c
   return b + c
 
-def encodeAC(values):
+def encodeAC(values, table):
   lastIndex = np.nonzero(values)[0][-1]
   zeroRun = 0
   bits = bitarray.bitarray()
   for i in range(len(values)):
     value = values[i]
     if i > lastIndex:
-      bits.frombytes('\x00')
+      bits += bitarray.bitarray(table[0])
       return bits
     if value == 0:
       if zeroRun == 15:
-        bits += bitarray.bitarray(np.binary_repr(240, width=8))
+        bits += bitarray.bitarray(table[240])
         zeroRun = 0
         continue
       zeroRun += 1
       continue
-    bits += bitarray.bitarray(np.binary_repr(zeroRun, width=4))
+    # bits += bitarray.bitarray(np.binary_repr(zeroRun, width=4))
     size = int(np.log2(abs(value))) + 1 
-    bits += bitarray.bitarray(np.binary_repr(size, width=4))
+    # bits += bitarray.bitarray(np.binary_repr(size, width=4))
+    bits += bitarray.bitarray(table[zeroRun * 16 + size])
     v = bitarray.bitarray(np.binary_repr(abs(value)))
     if value < 0:
       v.invert()
@@ -130,27 +141,28 @@ def encodeAC(values):
 tableLuminanceDC = {
   1: [],
   2: [0x00],
-  3: [0x02, 0x03, 0x04, 0x05, 0x06],
-  4: [0x0E], 
-  5: [0x1E],
-  6: [0x3E], 
-  7: [0x7E],
-  8: [0xFE],
-  9: [0x1FE],
+  3: [0x01, 0x02, 0x03, 0x04, 0x05],
+  4: [0x06], 
+  5: [0x07],
+  6: [0x08], 
+  7: [0x09],
+  8: [0x0A],
+  9: [0x0B],
 }
 
 tableChrominanceDC = {
   1: [],
   2: [0x00, 0x01, 0x02],
-  3: [0x06],
-  4: [0x0E], 
-  5: [0x1E],
-  6: [0x3E], 
-  7: [0x7E],
-  8: [0xFE],
-  9: [0x1FE],
-  10: [0x3FE],
-  11: [0x7FE],
+  3: [0x03],
+  4: [0x04], 
+  5: [0x05],
+  6: [0x06], 
+  7: [0x07],
+  8: [0x08],
+  9: [0x09],
+  10: [0x0A],
+  11: [0x0B],
+  12: [0x0C],
 }
 
 def readACTable(bits):
