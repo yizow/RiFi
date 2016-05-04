@@ -89,6 +89,21 @@ def rescale(img, minval=0, maxval=255):
         img = np.divide(img, np.max(img)) * maxval
     return img
 
+def clip(img, minval=0, maxval=255):
+    return np.clip(img, minval, maxval, img)
+
+def getLim(img):
+    return (np.min(img), np.max(img))
+
+def PSNR(im_truth, im_test, maxval=255.):
+    mse = np.linalg.norm(im_truth.astype(np.float64) - im_test.astype(np.float64))**2 / np.prod(np.shape(im_truth))
+    return 10 * np.log10(maxval**2 / mse)
+
+def isGreyscale(img):
+    if np.array_equal(img[:,:,0], img[:,:,1]) and np.array_equal(img[:,:,0], img[:,:,2]) and np.array_equal(img[:,:,1], img[:,:,2]):
+        return True
+    return False
+
 class JPEGlib(object):
     # Standard-specified Luminosity Table
     QL = np.array([[16, 11, 10, 16,  24,  40,  51,  61],
@@ -109,6 +124,8 @@ class JPEGlib(object):
                    [99, 99, 99, 99, 99, 99, 99, 99],
                    [99, 99, 99, 99, 99, 99, 99, 99],
                    [99, 99, 99, 99, 99, 99, 99, 99]])
+
+    QN = np.ones((8,8))
     
     
     def __init__(self, raw, qtable, QF=50, dims=None, rescale=False):
@@ -168,7 +185,7 @@ class IJPEG(JPEGlib):
 
         return rescale(out) if self.rescale else out
 
-def RiFi_preprocess(img, quality=50):
+def RiFi_preprocess(img, quality):
     # Calculating image shape to be even multiples of 8.
     targetsize = img.shape[0] + (8 - (img.shape[0] % 8)) % 8, \
                  img.shape[1] + (8 - (img.shape[1] % 8)) % 8
@@ -183,16 +200,16 @@ def RiFi_preprocess(img, quality=50):
     imgCr = signal.resample(signal.resample(imgCr, subsize[0], axis=0), subsize[1], axis=1)
     
     # JPEG DCT transformation, quatization, and compression (?)
-    bitsY = JPEG(imgY, qtable=JPEGlib.QL, QF=quality).process()
-    bitsCb = JPEG(imgCb, qtable=JPEGlib.QC, QF=quality).process()
-    bitsCr = JPEG(imgCr, qtable=JPEGlib.QC, QF=quality).process()
-    return targetsize, subsize, bitsY, bitsCb, bitsCr
+    bitsY = JPEG(imgY, qtable=JPEGlib.QN, QF=quality).process()
+    bitsCb = JPEG(imgCb, qtable=JPEGlib.QN, QF=quality).process()
+    bitsCr = JPEG(imgCr, qtable=JPEGlib.QN, QF=quality).process()
+    return targetsize, subsize, bitsY, bitsCb, bitsCr, getLim(img[:,:,0]), getLim(img[:,:,1]), getLim(img[:,:,2])
     
-def RiFi_postprocess(bitsY, bitsCb, bitsCr, targetsize, subsize, originalsize, quality=50):
+def RiFi_postprocess(bitsY, bitsCb, bitsCr, targetsize, subsize, originalsize, quality, Rlim, Glim, Blim):
     # Use JPEG class to convert bitarrays back to images
-    imgY = IJPEG(bitsY, qtable=JPEGlib.QL, QF=quality, dims=targetsize).process()
-    imgCb = IJPEG(bitsCb, qtable=JPEGlib.QC, QF=quality, dims=subsize).process()
-    imgCr = IJPEG(bitsCr, qtable=JPEGlib.QC, QF=quality, dims=subsize).process()
+    imgY = IJPEG(bitsY, qtable=JPEGlib.QN, QF=quality, dims=targetsize).process()
+    imgCb = IJPEG(bitsCb, qtable=JPEGlib.QN, QF=quality, dims=subsize).process()
+    imgCr = IJPEG(bitsCr, qtable=JPEGlib.QN, QF=quality, dims=subsize).process()
     
     # Reconstruct RGB image in original dimensions
     imgY = signal.resample(signal.resample(imgY, originalsize[0], axis=0), originalsize[1], axis=1)
@@ -201,20 +218,34 @@ def RiFi_postprocess(bitsY, bitsCb, bitsCr, targetsize, subsize, originalsize, q
     imgRecon = YCbCr2RGB(imgY, imgCb, imgCr)
 
     # Rescale image and cast to uint8
-    imgRecon[:,:,0] = rescale(imgRecon[:,:,0])
-    imgRecon[:,:,1] = rescale(imgRecon[:,:,1])
-    imgRecon[:,:,2] = rescale(imgRecon[:,:,2])
+    imgRecon[:,:,0] = clip(imgRecon[:,:,0], minval=Rlim[0], maxval=Rlim[1])
+    imgRecon[:,:,1] = clip(imgRecon[:,:,1], minval=Glim[0], maxval=Glim[1])
+    imgRecon[:,:,2] = clip(imgRecon[:,:,2], minval=Blim[0], maxval=Blim[1])
     return imgRecon.astype(np.uint8)
+
+def compressTo(img, maxsize):
+    pass
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "Example Usage: RiFiJPEG.py Images/bird.jpg"
     # Load image
     img = ndimage.imread(sys.argv[1])
-    
+    imgfile = sys.argv[1].split('/')[1]
+    imgname = imgfile.split('.')[0]
+    imgtype = imgfile.split('.')[1]
+
     # Process and Reconstruct using JPEG
-    tsize, ssize, Y, Cb, Cr = RiFi_preprocess(img)
-    imgRecon = RiFi_postprocess(Y, Cb, Cr, tsize, ssize, (img.shape[0], img.shape[1]))
+    tsize, ssize, Y, Cb, Cr, Rlim, Glim, Blim = RiFi_preprocess(img, 50)
+    imgRecon = RiFi_postprocess(Y, Cb, Cr, tsize, ssize, (img.shape[0], img.shape[1]), 50, Rlim, Glim, Blim)
     
     # Save result
-    misc.imsave(sys.argv[1].split('.')[0]+'_reconstructed.jpg', imgRecon)
+    misc.imsave('Images/recon/'+imgname+'_reconstructed.'+imgtype, imgRecon)
+
+    # Calculate PSNR
+    error = PSNR(img, imgRecon)
+    print error
+    of = open('Images/recon/'+imgname+'_reconstructed.txt', 'w')
+    of.write(str(error))
+    of.write('\n')
+    of.close()
