@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import bitarray
 import Queue
@@ -22,9 +23,10 @@ def encode(DCT, huffmanTableDC, huffmanTableAC):
     offset = 8 - length % 8
     # print "padding", offset
     bits = bitarray.bitarray([0]*offset) + bits
+  bits += bitarray.bitarray("1111111111011001")
   return bits
 
-def decode(bitstream, huffmanRootDC, huffmanRootAC):
+def decode(bits, huffmanRootDC, huffmanRootAC):
   """Expects a bitstream, outputs an N*64 matrix
   """
   bits = iter(bitstream)
@@ -43,6 +45,13 @@ def decode(bitstream, huffmanRootDC, huffmanRootAC):
     startMarker.append(bits.next())
   while True:
     try: 
+      testEnd = bitarray.bitarray()
+      for _ in range(16):
+        testEnd.append(bits.next())
+      if bits.to01() == "1111111111011001":
+        break
+      bits = itertools.chain(testEnd, bits)
+
       # DC Value
       node = huffmanRootDC
       while node.code == None:

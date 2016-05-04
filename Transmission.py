@@ -21,6 +21,8 @@ import operator
 import Encoding
 
 import reedsolo
+MULTI = False
+
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -107,6 +109,200 @@ def PLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
 
     return np.array(idx).astype('int32') 
     
+def mafsk1200(bits, fs = 48000, baud = 1200, fd=1000, fc=2700):
+    # the function will take a bitarray of bits and will output an AFSK1200 modulated signal of them, sampled at fs
+    #  Inputs:
+    #         bits  - bitarray of bits
+    #         fs    - sampling rate
+    # Outputs:
+    #         sig    -  returns afsk1200 modulated signal
+    
+    # your code below:
+    ck = lcm((baud, fs))
+    factor = ck/fs
+    bitlen = int(ck//baud)
+    numbits =len(bits)
+    
+    arr = []
+    hold = ''
+    for x in bits:
+        if x:
+            hold += '1'
+        else:
+            hold += '0'
+        if len(hold) == 2:
+            if hold == '00':
+                arr += [-2]*bitlen
+            if hold == '01':
+                arr += [-1]*bitlen
+            if hold == '10':
+                arr += [1]*bitlen
+            if hold == '11':
+                arr += [2]*bitlen
+            hold = ''
+    bit2 = np.array(arr)
+    #bit2 = np.array(map(lambda x:[1]*bitlen if x else [-1]*bitlen, bits))
+    #bit2 = np.reshape(bit2, (1, bitlen*numbits))[0]
+    bit2.flatten()    #print len(m)
+    #print r
+    #return r
+    m = bit2#np.array(m)
+    t = r_[0:(numbits//baud+1)*ck]/ck
+    r = fd*integrate.cumtrapz(m, dx = 1/ck)
+    l = fc*t[:len(r)]
+    w = l-r
+    sig = np.cos(2*np.pi*w)
+    
+    sig = sig[::factor]
+    return sig
+                     
+
+def nc_mafsk1200Demod(sig, fs=48000.0, baud=1200, TBW=2.0, fc = 2700, fd = 1000):
+    #  non-coherent demodulation of afsk1200
+    # function returns the NRZ (without rectifying it)
+    # 
+    # sig  - signal
+    # baud - The bitrate. Default 1200
+    # fs   - sampling rate in Hz
+    # TBW  - TBW product of the filters
+    #
+    # Returns:
+    #     NRZ 
+    
+    N = (int(fs/baud*TBW)//2)*2+1
+    f11 = fc - 2*fd
+    f10 = fc - fd
+    f01 = fc + fd
+    f00 = fc + 2*fd
+    
+    # your code here
+    taps = TBW*fs/1200-1
+    taps = N
+    filt = signal.firwin(taps, baud/2, window='hanning', nyq=fs/2)
+    #plt.plot(np.fft.fft(filt))
+    #plt.plot(filt)
+    #f1 = 1200
+    #f2 = 2200
+    t2 = (r_[0:fs]/fs)[:taps]
+    filt11 = filt* np.exp(t2*1j*f11*-2*np.pi)
+    filt10 = filt* np.exp(t2*1j*f10*-2*np.pi)
+    sig11 = signal.fftconvolve(sig, filt11, mode="same")
+    sig10 = signal.fftconvolve(sig, filt10, mode="same")
+    filt01 = filt* np.exp(t2*1j*f01*-2*np.pi)
+    filt00 = filt* np.exp(t2*1j*f00*-2*np.pi)
+    sig01 = signal.fftconvolve(sig, filt01, mode="same")
+    sig00 = signal.fftconvolve(sig, filt00, mode="same")
+    midsig = 0#(max(sig00)+min(sig00)+max(sig11)+min(sig11))/4
+    
+    sig11r = sig11 - midsig
+    sig10r = sig10 - midsig
+    sig01r = sig01 - midsig
+    sig00r = sig00 - midsig
+    
+    return sig11r, sig10r, sig01r, sig00r
+    
+    diff = np.abs(sig12k)-np.abs(sig22k)
+    return diff
+    opt = signal.firwin(taps, baud*1.2, window='hanning', nyq=fs/2)
+    ana = signal.fftconvolve(diff, opt, mode="same")
+    #sign = np.sign(ana)
+
+    NRZ = ana
+    return NRZ
+
+def bits2mag(bits, bitlen = 1):
+    arr = []
+    hold = ''
+    for x in bits:
+        if x:
+            hold += '1'
+        else:
+            hold += '0'
+        if len(hold) == 2:
+            if hold == '00':
+                arr += [-2]*bitlen
+            if hold == '01':
+                arr += [-1]*bitlen
+            if hold == '10':
+                arr += [1]*bitlen
+            if hold == '11':
+                arr += [2]*bitlen
+            hold = ''
+    return arr
+
+def mafsk2barr(gg, centers=20,spacing=40,indii = None):
+    x = np.vstack((np.abs(gg[0]), np.abs(gg[1]), np.abs(gg[2]), np.abs(gg[3])))
+    x.shape
+    if indii:
+        o = np.argmax(x, axis=0)[indii]
+    else:
+        o = np.argmax(x,axis=0)[centers::spacing]
+    y = []#bitarray.bitarray()
+    for g in o:
+        if g == 0:
+            y.append(1)
+            y.append(1)
+        if g == 1:
+            y.append(1)
+            y.append(0)
+        if g == 2:
+            y.append(0)
+            y.append(1)
+        if g == 3:
+            y.append(0)
+            y.append(0)
+    return np.array(y)
+def mafsk2crossings(gg):
+    x = np.vstack((np.abs(gg[0]), np.abs(gg[1]), np.abs(gg[2]), np.abs(gg[3])))
+    #x.shape
+    o = np.argmax(x, axis=0)
+    #y = bitarray.bitarray()
+    last = None
+    zc = []
+    for i, g in enumerate(o):
+        if last != None:
+            if last != g:
+                zc.append(1)
+            else:
+                zc.append(0)
+        else:
+            zc.append(0)
+        last = g
+    return zc
+
+def mPLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
+    # 
+    # function implements a simple phased lock loop for tyming recovery
+    #
+    # Inputs:
+    #          NRZa -   The crossings signal
+    #          a - nudge factor
+    #          fs - sampling rate (arbitrary)
+    #          baude  - the bit rate
+    #
+    # Outputs:
+    #          idx - array of indexes to sample at
+    #
+    
+    
+    # Your code here
+    idx = []
+    inc = np.int32(2**32/(fs/baud))
+    counter = np.int32(0)
+    last = None
+    for i, x in enumerate(NRZa):
+        if x: 
+            counter = counter*a
+            counter = np.int32(counter)
+        counter2 = counter+inc
+        if counter2<counter:
+            idx.append(i)
+        last = x
+        counter = counter2
+    return idx
+
+
+
 
 def NRZ2NRZI(NRZ):
     
@@ -333,9 +529,16 @@ def testTransmit(eBits, debug=False):
       recorded.append(Qin.get())
 
   data = np.array(recorded).flatten()
-  demod = nc_afsk1200Demod(data, fs_usb)
-  idx = PLL(demod, fs=fs_usb)
-  samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
+  if MULTI:
+      dd = nc_mafsk1200Demod(data)
+      plloc = mafsk2crossings(dd)
+      bindex = mPLL(plloc)
+      locs = mafsk2barr(dd, indii = bindex)
+      samples = bitarray.bitarray([True if x == 1 else False for x in locs])
+  else:
+      demod = nc_afsk1200Demod(data, fs_usb)
+      idx = PLL(demod, fs=fs_usb)
+      samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
   bits = NRZI2NRZ(samples)
   packets = findPackets(bits)
   decoded = reduce(operator.add, packets)
@@ -375,16 +578,16 @@ def findPackets(bits, rs):
                 done = True
             data = data[:-8]
             data = ax25.bit_unstuff(data)
-            # try:
-            # print "received", data
-            data = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(data.to01()).tobytes()))).tolist())
-            # print "decoded ", data
-            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
-              packets.append(data[:-8])
-            # except:
+            try:
+              # print "received", data
+              data = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(data.to01()).tobytes()))).tolist())
+              # print "decoded ", data
+              if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
+                packets.append(data[:-8])
+            except:
+              pass
             #   print "error"
             #   print data
-            #   pass
       else:
         b = bitstream.next()
 
@@ -438,7 +641,11 @@ def transmit(bits, dusb_out):
 
   for packet in packetize(bits, rs=reedsolo.RSCodec(30)):
     Qout.put("KEYON")
-    Qout.put(afsk1200(packet)*.3, fs_usb)
+    if MULTI:
+        sig = mafsk1200(packet)
+    else:
+        sig = afsk1200(packet)
+    Qout.put(sig*.3, fs_usb)
     Qout.put("KEYOFF")
     Qout.put(np.zeros(fs_usb//4))
   Qout.put("EOT")
