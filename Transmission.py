@@ -124,47 +124,6 @@ def NRZI2NRZ(NRZI, current = True):
     
     return NRZ
 
-
-def findPackets(bits):
-  flag = "01111110"
-  bitstream = iter(bits)
-  b = bitstream.next()
-  packets = []
-  while True:
-    try:
-      if b == 0:  
-        for _ in range(6):
-          b = bitstream.next()
-          if b != 1:
-            break
-        else:
-          b = bitstream.next()
-          if b == 0:
-            # Flag found begin collecting data 
-            data = bitarray.bitarray()
-            done = False
-            while not done:
-              for _ in range(8):
-                data.append(bitstream.next())
-              while data[-8:].to01() != flag:
-                data.append(bitstream.next())
-              if data[:8].to01() == flag:
-                data = data[8:]
-              if len(data[:-8]) > 0:
-                done = True
-            data = data[:-8]
-            data = ax25.bit_unstuff(data)
-            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
-              packets.append(data[:-8])
-      else:
-        b = bitstream.next()
-
-    except StopIteration:
-      break
-  return packets
-                
-        
-
 # function to generate a checksum for validating packets
 def genfcs(bits):
     # Generates a checksum from packet bits
@@ -312,20 +271,6 @@ def record_audio( queue,ctrlQ, p, fs ,dev,chunk=512):
         queue.put( data_flt ) # append to list
 
 
-def makeMsg(bits):
-  """Converts bits to a signal to send out radio
-  """
-  return afsk1200(NRZ2NRZI(bits))
-
-def makeBits(msg, fs=48e3):
-  """Given a received radio message, return the bits
-  """
-  demod = nc_afsk1200Demod(msg, fs)
-  idx = PLL(demod, fs=fs)
-  samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
-  bits = NRZI2NRZ(samples)
-  return bits 
-
 def lcm(numbers):
     return reduce(lambda x, y: (x*y)/gcd(x,y), numbers, 1)
 
@@ -391,6 +336,49 @@ def testTransmit(eBits, debug=False):
   print decoded == eBits
   return decoded
 
+
+
+def findPackets(bits):
+  if len(bits) == 0:
+    return []
+  flag = "01111110"
+  bitstream = iter(bits)
+  b = bitstream.next()
+  packets = []
+  while True:
+    try:
+      if b == 0:  
+        for _ in range(6):
+          b = bitstream.next()
+          if b != 1:
+            break
+        else:
+          b = bitstream.next()
+          if b == 0:
+            # Flag found begin collecting data 
+            data = bitarray.bitarray()
+            done = False
+            while not done:
+              for _ in range(8):
+                data.append(bitstream.next())
+              while data[-8:].to01() != flag:
+                data.append(bitstream.next())
+              if data[:8].to01() == flag:
+                data = data[8:]
+              if len(data[:-8]) > 0:
+                done = True
+            data = data[:-8]
+            data = ax25.bit_unstuff(data)
+            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
+              packets.append(data[:-8])
+      else:
+        b = bitstream.next()
+
+    except StopIteration:
+      break
+  return packets
+                
+
 def packetize(bitstream):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
@@ -416,3 +404,66 @@ def checksum(bits):
     power %= 8
     total %= 256
   return bitarray.bitarray(np.binary_repr(total, width=8))
+
+
+def findPacketBuffer(eBits):
+  dusb_in = 2
+  dusb_out = 2
+  din = 9
+  dout = 9
+
+  output = []
+
+  for divisor in [12]:
+    correct = 0
+    for _ in range(1):
+      s = serial.Serial(port='/dev/ttyUSB0')
+      s.setDTR(0)
+
+      Qin = Queue.Queue()
+      cQin = Queue.Queue()
+      Qout = Queue.Queue()
+      cQout = Queue.Queue()
+      p = pyaudio.PyAudio()
+
+      fs_usb = 48e3
+
+      t_rec = threading.Thread(target = record_audio,   args = (Qin, cQin, p, fs_usb, dusb_in, 512))
+      t_rec.start()
+      time.sleep(1)
+
+      for packet in packetize(eBits):
+        Qout.put("KEYON")
+        Qout.put(afsk1200(packet)*.3, fs_usb)
+        Qout.put("KEYOFF")
+        Qout.put(np.zeros(fs_usb//divisor))
+      Qout.put("EOT")
+
+      play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
+
+      while not(Qout.empty()) :
+          time.sleep(1)
+
+
+      time.sleep(1)
+      cQin.put('EOT')
+      time.sleep(2) # give time for the thread to get killed
+
+
+      p.terminate()
+      s.close()
+
+      recorded = []
+      while not (Qin.empty()):
+          recorded.append(Qin.get())
+
+      data = np.array(recorded).flatten()
+      demod = nc_afsk1200Demod(data, fs_usb)
+      idx = PLL(demod, fs=fs_usb)
+      samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
+      bits = NRZI2NRZ(samples)
+      packets = findPackets(bits)
+      decoded = reduce(operator.add, packets, bitarray.bitarray())
+      correct += decoded == eBits
+    output.append(correct*1.0/5)
+  return output
