@@ -111,7 +111,7 @@ def encodeDC(value, table):
   return b + c
 
 def encodeAC(values, table):
-  lastIndex = np.nonzero(values)[0][-1]
+  lastIndex = np.nonzero(np.append(values, 1))[0][-1]
   zeroRun = 0
   bits = bitarray.bitarray()
   for i in range(len(values)):
