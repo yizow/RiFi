@@ -16,6 +16,12 @@ def encode(DCT, huffmanTableDC, huffmanTableAC):
   bits = bitarray.bitarray()
   for i in range(len(DCBits)):
     bits += DCBits[i] + ACBits[i]
+  bits = bitarray.bitarray(np.binary_repr(216, width=8)) + bits
+  length = len(bits) 
+  if length % 8 > 0:
+    offset = 8 - length % 8
+    # print "padding", offset
+    bits = bitarray.bitarray([0]*offset) + bits
   return bits
 
 def decode(bitstream, huffmanRootDC, huffmanRootAC):
@@ -25,6 +31,16 @@ def decode(bitstream, huffmanRootDC, huffmanRootAC):
   DCValues = np.array([])
   ACValues = []
   lastDC = 0
+
+  startMarker = []
+  for _ in range(8):
+    startMarker.append(bits.next())
+  startMarker = bitarray.bitarray(startMarker)
+  for _ in range(8):
+    if startMarker.to01() == "11011000":
+      break
+    startMarker.pop(0)
+    startMarker.append(bits.next())
   while True:
     try: 
       # DC Value
@@ -148,6 +164,7 @@ tableLuminanceDC = {
   7: [0x09],
   8: [0x0A],
   9: [0x0B],
+  10: [0x0C],
 }
 
 tableChrominanceDC = {

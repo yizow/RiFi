@@ -18,6 +18,10 @@ from scipy import integrate
 
 import operator
 
+import Encoding
+
+import reedsolo
+
 def printDevNumbers(p):
     N = p.get_device_count()
     for n in range(0,N):
@@ -32,14 +36,16 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
+    speed = 2400
+    diff = 2000
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
-    upsample = lcm((1200, fs))
-    ratio = upsample/1200
+    upsample = lcm((speed, fs))
+    ratio = upsample/speed
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*1700-2*np.pi*500*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*3200-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -59,13 +65,13 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # your code here
     taps = fs/600-1
     bandpass = signal.firwin(taps, 600, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*2200*np.r_[0.0:taps]/fs)
+    spacepass = bandpass * np.exp(1j*2*np.pi*2500*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*7500*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 1200*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, 2500*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     
@@ -123,47 +129,6 @@ def NRZI2NRZ(NRZI, current = True):
         current = NRZI[n]
     
     return NRZ
-
-
-def findPackets(bits):
-  flag = "01111110"
-  bitstream = iter(bits)
-  b = bitstream.next()
-  packets = []
-  while True:
-    try:
-      if b == 0:  
-        for _ in range(6):
-          b = bitstream.next()
-          if b != 1:
-            break
-        else:
-          b = bitstream.next()
-          if b == 0:
-            # Flag found begin collecting data 
-            data = bitarray.bitarray()
-            done = False
-            while not done:
-              for _ in range(8):
-                data.append(bitstream.next())
-              while data[-8:].to01() != flag:
-                data.append(bitstream.next())
-              if data[:8].to01() == flag:
-                data = data[8:]
-              if len(data[:-8]) > 0:
-                done = True
-            data = data[:-8]
-            data = ax25.bit_unstuff(data)
-            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
-              packets.append(data[:-8])
-      else:
-        b = bitstream.next()
-
-    except StopIteration:
-      break
-  return packets
-                
-        
 
 # function to generate a checksum for validating packets
 def genfcs(bits):
@@ -312,20 +277,6 @@ def record_audio( queue,ctrlQ, p, fs ,dev,chunk=512):
         queue.put( data_flt ) # append to list
 
 
-def makeMsg(bits):
-  """Converts bits to a signal to send out radio
-  """
-  return afsk1200(NRZ2NRZI(bits))
-
-def makeBits(msg, fs=48e3):
-  """Given a received radio message, return the bits
-  """
-  demod = nc_afsk1200Demod(msg, fs)
-  idx = PLL(demod, fs=fs)
-  samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
-  bits = NRZI2NRZ(samples)
-  return bits 
-
 def lcm(numbers):
     return reduce(lambda x, y: (x*y)/gcd(x,y), numbers, 1)
 
@@ -391,16 +342,70 @@ def testTransmit(eBits, debug=False):
   print decoded == eBits
   return decoded
 
-def packetize(bitstream):
+
+
+def findPackets(bits, rs):
+  if len(bits) == 0:
+    return []
+  flag = "01111110"
+  bitstream = iter(bits)
+  b = bitstream.next()
+  packets = []
+  while True:
+    try:
+      if b == 0:  
+        for _ in range(6):
+          b = bitstream.next()
+          if b != 1:
+            break
+        else:
+          b = bitstream.next()
+          if b == 0:
+            # Flag found begin collecting data 
+            data = bitarray.bitarray()
+            done = False
+            while not done:
+              for _ in range(8):
+                data.append(bitstream.next())
+              while data[-8:].to01() != flag:
+                data.append(bitstream.next())
+              if data[:8].to01() == flag:
+                data = data[8:]
+              if len(data[:-8]) > 16:
+                done = True
+            data = data[:-8]
+            data = ax25.bit_unstuff(data)
+            # try:
+            # print "received", data
+            data = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(data.to01()).tobytes()))).tolist())
+            # print "decoded ", data
+            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
+              packets.append(data[:-8])
+            # except:
+            #   print "error"
+            #   print data
+            #   pass
+      else:
+        b = bitstream.next()
+
+    except StopIteration:
+      break
+  return packets
+                
+
+def packetize(bitstream, rs):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
-  infoSize = 8*256
+  infoSize = 8*220
   flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
   b = bitstream
   packets = []
   while len(b) > 0:
     bits = b[:infoSize]
     bits += checksum(bits)
+    # print "original", bits
+    bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
+    # print "ecced   ", bits
     b = b[infoSize:]
     padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
     packets.append(NRZ2NRZI(padded))
@@ -416,3 +421,40 @@ def checksum(bits):
     power %= 8
     total %= 256
   return bitarray.bitarray(np.binary_repr(total, width=8))
+
+
+def transmit(bits):
+  dusb_in = 2
+  dusb_out = 2
+  din = 9
+  dout = 9
+
+  s = serial.Serial(port='/dev/ttyUSB0')
+  s.setDTR(0)
+
+  Qout = Queue.Queue()
+  cQout = Queue.Queue()
+  p = pyaudio.PyAudio()
+
+  fs_usb = 48e3
+
+  time.sleep(1)
+
+  for packet in packetize(bits):
+    Qout.put("KEYON")
+    Qout.put(afsk1200(packet)*.3, fs_usb)
+    Qout.put("KEYOFF")
+    Qout.put(np.zeros(fs_usb//divisor))
+  Qout.put("EOT")
+
+  play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
+
+  while not(Qout.empty()) :
+      time.sleep(1)
+
+  time.sleep(1)
+
+  p.terminate()
+  s.close()
+
+
