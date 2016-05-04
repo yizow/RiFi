@@ -628,7 +628,7 @@ def checksum(bits):
 
 def transmit(bits, dusb_out):
 
-  s = serial.Serial(port='COM3')
+  s = serial.Serial(port='/dev/ttyUSB0')
   s.setDTR(0)
 
   Qout = Queue.Queue()
@@ -647,7 +647,7 @@ def transmit(bits, dusb_out):
         sig = afsk1200(packet)
     Qout.put(sig*.3, fs_usb)
     Qout.put("KEYOFF")
-    Qout.put(np.zeros(fs_usb//4))
+    Qout.put(np.zeros(fs_usb//2))
   Qout.put("EOT")
 
   play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
