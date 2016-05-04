@@ -72,7 +72,6 @@ def decode(bits, huffmanRootDC, huffmanRootAC):
           diffDC = -1 * int(value.to01(), 2)
         else:
           diffDC = int(value.to01(), 2)
-      # print code, size, value
 
       lastDC += diffDC
       DCValues = np.append(DCValues, lastDC)
@@ -105,7 +104,6 @@ def decode(bits, huffmanRootDC, huffmanRootAC):
           value = -1 * int(value.to01(), 2)
         else:
           value = int(value.to01(), 2)
-        print code, size, zeroRun, value
         values[index] = value
         index += 1
       ACValues.append(values)
@@ -136,7 +134,7 @@ def encodeDC(value, table):
   return b + c
 
 def encodeAC(values, table):
-  lastIndex = np.nonzero(np.append(values, 1))[0][-1]
+  lastIndex = np.nonzero(np.insert(values, 0, 1))[0][-1] - 1
   zeroRun = 0
   bits = bitarray.bitarray()
   for i in range(len(values)):

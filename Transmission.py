@@ -675,3 +675,39 @@ def transmit(bits, dusb_out):
   s.close()
 
 
+def bitStreamify(header, Y, Cb, Cr):
+  toSend = bitarray.bitarray()
+  # start = bitarray.bitarray("1111111111011000")
+  # end = bitarray.bitarray("1111111111011001")
+  # toSend = start + header + end
+  toSend += Encoding.encode(Y, Encoding.huffmanLookupLuminanceDC, Encoding.huffmanLookupLuminanceAC)
+  toSend += Encoding.encode(Cb, Encoding.huffmanLookupChrominanceDC, Encoding.huffmanLookupChrominanceAC)
+  toSend += Encoding.encode(Cr, Encoding.huffmanLookupChrominanceDC, Encoding.huffmanLookupChrominanceAC)
+  return toSend
+
+def deStreamify(bitstream):
+  bits = iter(bitstream)
+  # startMarker = []
+  # for _ in range(16):
+  #   startMarker.append(bits.next())
+  # startMarker = bitarray.bitarray(startMarker)
+  # for _ in range(16):
+  #   if startMarker.to01() == "1111111111011000":
+  #     break
+  #   startMarker.pop(0)
+  #   startMarker.append(bits.next())
+  # header = bitarray.bitarray()
+  # for _ in range(16):
+  #   header.append(bits.next())
+  #   while header[-16:].to01() != "1111111111011001":
+  #     header.append(bits.next())
+
+  # header = header[:-16]
+
+  Y = Encoding.decode(bits, Encoding.huffmanRootLuminanceDC, Encoding.huffmanRootLuminanceAC)
+
+  Cb = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
+
+  Cr = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
+
+  return header, Y, Cb, Cr
