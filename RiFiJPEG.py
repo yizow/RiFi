@@ -168,7 +168,7 @@ class IJPEG(JPEGlib):
 
         return rescale(out) if self.rescale else out
 
-def RiFi_preprocess(img):
+def RiFi_preprocess(img, quality=50):
     # Calculating image shape to be even multiples of 8.
     targetsize = img.shape[0] + (8 - (img.shape[0] % 8)) % 8, \
                  img.shape[1] + (8 - (img.shape[1] % 8)) % 8
@@ -183,16 +183,16 @@ def RiFi_preprocess(img):
     imgCr = signal.resample(signal.resample(imgCr, subsize[0], axis=0), subsize[1], axis=1)
     
     # JPEG DCT transformation, quatization, and compression (?)
-    bitsY = JPEG(imgY, qtable=JPEGlib.QL, QF=95).process()
-    bitsCb = JPEG(imgCb, qtable=JPEGlib.QC, QF=95).process()
-    bitsCr = JPEG(imgCr, qtable=JPEGlib.QC, QF=95).process()
+    bitsY = JPEG(imgY, qtable=JPEGlib.QL, QF=quality).process()
+    bitsCb = JPEG(imgCb, qtable=JPEGlib.QC, QF=quality).process()
+    bitsCr = JPEG(imgCr, qtable=JPEGlib.QC, QF=quality).process()
     return targetsize, subsize, bitsY, bitsCb, bitsCr
     
-def RiFi_postprocess(bitsY, bitsCb, bitsCr, targetsize, subsize, originalsize):
+def RiFi_postprocess(bitsY, bitsCb, bitsCr, targetsize, subsize, originalsize, quality=50):
     # Use JPEG class to convert bitarrays back to images
-    imgY = IJPEG(bitsY, qtable=JPEGlib.QL, QF=95, dims=targetsize).process()
-    imgCb = IJPEG(bitsCb, qtable=JPEGlib.QC, QF=95, dims=subsize).process()
-    imgCr = IJPEG(bitsCr, qtable=JPEGlib.QC, QF=95, dims=subsize).process()
+    imgY = IJPEG(bitsY, qtable=JPEGlib.QL, QF=quality, dims=targetsize).process()
+    imgCb = IJPEG(bitsCb, qtable=JPEGlib.QC, QF=quality, dims=subsize).process()
+    imgCr = IJPEG(bitsCr, qtable=JPEGlib.QC, QF=quality, dims=subsize).process()
     
     # Reconstruct RGB image in original dimensions
     imgY = signal.resample(signal.resample(imgY, originalsize[0], axis=0), originalsize[1], axis=1)
