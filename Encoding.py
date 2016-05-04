@@ -29,7 +29,7 @@ def encode(DCT, huffmanTableDC, huffmanTableAC):
 def decode(bits, huffmanRootDC, huffmanRootAC):
   """Expects a bitstream, outputs an N*64 matrix
   """
-  bits = iter(bitstream)
+  # bits = iter(bitstream)
   DCValues = np.array([])
   ACValues = []
   lastDC = 0
@@ -48,7 +48,7 @@ def decode(bits, huffmanRootDC, huffmanRootAC):
       testEnd = bitarray.bitarray()
       for _ in range(16):
         testEnd.append(bits.next())
-      if bits.to01() == "1111111111011001":
+      if testEnd.to01() == "1111111111011001":
         break
       bits = itertools.chain(testEnd, bits)
 

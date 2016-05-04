@@ -94,20 +94,24 @@ def PLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
     #          idx - array of indexes to sample at
     #
     # Your code here
-    idx = []
-    increment = 2**32 * baud / fs 
-    counter = np.int32(increment)
+    old_settings = np.seterr(over='ignore')
     
-    for i in range(1, len(NRZa)):
-        crossing = np.sign(NRZa[i]) != np.sign(NRZa[i-1])
-        if crossing:
-            counter = int(a*counter)
-        counter += increment
-        if counter >= 2**31:
-            counter = np.int32(counter)
-            idx.append(i)
-
-    return np.array(idx).astype('int32') 
+    counter = np.int32(0)
+    inc = np.int32(2**32*baud/float(fs))
+    one = np.int32(1)
+    idx = np.array([])
+    
+    for i in xrange(1, len(NRZa)):
+        counter *= one if np.sign(NRZa[i]) == np.sign(NRZa[i-1]) else a
+        counter = np.int32(counter)
+        
+        old_counter = counter
+        counter += inc
+        if (old_counter > 0) and (counter < 0):
+            idx = np.append(idx, i)
+    
+    np.seterr(**old_settings)
+    return idx 
     
 def mafsk1200(bits, fs = 48000, baud = 1200, fd=1000, fc=2700):
     # the function will take a bitarray of bits and will output an AFSK1200 modulated signal of them, sampled at fs
