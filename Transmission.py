@@ -152,7 +152,10 @@ def findPackets(bits):
                 data = data[8:]
               if len(data[:-8]) > 0:
                 done = True
-            packets.append(ax25.bit_unstuff(data[:-8]))
+            data = data[:-8]
+            data = ax25.bit_unstuff(data)
+            if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
+              packets.append(data[:-8])
       else:
         b = bitstream.next()
 
@@ -326,10 +329,11 @@ def makeBits(msg, fs=48e3):
 def lcm(numbers):
     return reduce(lambda x, y: (x*y)/gcd(x,y), numbers, 1)
 
-def testTransmit(eBits):
-  p = pyaudio.PyAudio()
-  printDevNumbers(p)
-  p.terminate()
+def testTransmit(eBits, debug=False):
+  if debug:
+    p = pyaudio.PyAudio()
+    printDevNumbers(p)
+    p.terminate()
 
   dusb_in = 2
   dusb_out = 2
@@ -367,7 +371,7 @@ def testTransmit(eBits):
 
   time.sleep(1)
   cQin.put('EOT')
-  time.sleep(3) # give time for the thread to get killed
+  time.sleep(1) # give time for the thread to get killed
 
 
   p.terminate()
@@ -384,21 +388,31 @@ def testTransmit(eBits):
   bits = NRZI2NRZ(samples)
   packets = findPackets(bits)
   decoded = reduce(operator.add, packets)
-  print eBits
-  for packet in packets:
-    print packet
-  return bits
+  print decoded == eBits
+  return decoded
 
 def packetize(bitstream):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
-  infoSize = 50
+  infoSize = 8*256
   flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
   b = bitstream
   packets = []
   while len(b) > 0:
     bits = b[:infoSize]
+    bits += checksum(bits)
     b = b[infoSize:]
     padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
     packets.append(NRZ2NRZI(padded))
   return packets
+
+def checksum(bits):
+  power = 0
+  total = 0
+  for b in bits:
+    if b:
+      total += 2**power
+    power += 1
+    power %= 8
+    total %= 256
+  return bitarray.bitarray(np.binary_repr(total, width=8))
