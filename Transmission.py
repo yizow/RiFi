@@ -20,6 +20,8 @@ import operator
 
 import Encoding
 
+import reedsolo
+
 def printDevNumbers(p):
     N = p.get_device_count()
     for n in range(0,N):
@@ -342,7 +344,7 @@ def testTransmit(eBits, debug=False):
 
 
 
-def findPackets(bits):
+def findPackets(bits, rs):
   if len(bits) == 0:
     return []
   flag = "01111110"
@@ -369,12 +371,20 @@ def findPackets(bits):
                 data.append(bitstream.next())
               if data[:8].to01() == flag:
                 data = data[8:]
-              if len(data[:-8]) > 0:
+              if len(data[:-8]) > 16:
                 done = True
             data = data[:-8]
             data = ax25.bit_unstuff(data)
+            # try:
+            # print "received", data
+            data = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(data.to01()).tobytes()))).tolist())
+            # print "decoded ", data
             if len(data) > 8 and checksum(data[:-8]) == data[-8:]:
               packets.append(data[:-8])
+            # except:
+            #   print "error"
+            #   print data
+            #   pass
       else:
         b = bitstream.next()
 
@@ -383,16 +393,19 @@ def findPackets(bits):
   return packets
                 
 
-def packetize(bitstream):
+def packetize(bitstream, rs):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
-  infoSize = 8*256
+  infoSize = 8*220
   flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
   b = bitstream
   packets = []
   while len(b) > 0:
     bits = b[:infoSize]
     bits += checksum(bits)
+    # print "original", bits
+    bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
+    # print "ecced   ", bits
     b = b[infoSize:]
     padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
     packets.append(NRZ2NRZI(padded))
