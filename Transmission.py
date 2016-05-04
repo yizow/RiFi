@@ -21,7 +21,7 @@ import operator
 import Encoding
 
 import reedsolo
-MULTI = False
+MULTI = True
 
 
 def printDevNumbers(p):
@@ -509,7 +509,11 @@ def testTransmit(eBits, debug=False):
 
   for packet in packetize(eBits):
     Qout.put("KEYON")
-    Qout.put(afsk1200(packet)*.1, fs_usb)
+    if MULTI:
+        sig = mafsk1200(packet)
+    else:
+        sig = afsk1200(packet)
+    Qout.put(sig*.1, fs_usb)
     Qout.put("KEYOFF")
     Qout.put(np.zeros(fs_usb//2))
   Qout.put("EOT")
@@ -631,8 +635,13 @@ def checksum(bits):
 
 
 def transmit(bits, dusb_out):
-
-  s = serial.Serial(port='/dev/ttyUSB0')
+  try:
+    s = serial.Serial(port='/dev/ttyUSB0')
+  except:
+    try:
+      s = serial.Serial(port='/dev/ttyUSB1')
+    except:
+      s = serial.Serial(port='/dev/ttyUSB2')     
   s.setDTR(0)
 
   Qout = Queue.Queue()
