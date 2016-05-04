@@ -2,6 +2,7 @@
 from __future__ import division
 if True:
   # Import functions and libraries
+  import os
   import numpy as np
   import matplotlib.pyplot as plt
   #import pyaudio
@@ -38,6 +39,9 @@ if True:
 
 IMG_DIR = 'Images/'
 tempDir = 'temp/'
+def PSNR(im_truth, im_test, maxval=255.):
+    mse = np.linalg.norm(im_truth.astype(np.float64) - im_test.astype(np.float64))**2 / np.prod(np.shape(im_truth))
+    return 10 * np.log10(maxval**2 / mse) 
 
 def intarr2bitarr(w):
     bits_ref = map(lambda x:format(x, "08b"), w)
@@ -62,7 +66,7 @@ def bitarr2intarr(br):
 def img2gzip(name, img = None, fmt = '.tiff'):
     if img == None:
         img = ndimage.imread(IMG_DIR+name+fmt)
-    np.save(name, img)
+    np.save(tempDir+name, img)
     with open(tempDir+name+'.npy', 'rb') as f:
         w = f.read()
     with gzip.open(tempDir+name+'.gz', 'wb') as f:
