@@ -36,8 +36,8 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
-    speed = 2400
-    diff = 2000
+    speed = 1200
+    diff = 500
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
     upsample = lcm((speed, fs))
@@ -45,7 +45,7 @@ def afsk1200(bits, fs = 48000):
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*3200-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*1700-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -65,13 +65,13 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # your code here
     taps = fs/600-1
     bandpass = signal.firwin(taps, 600, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*2500*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*7500*np.r_[0.0:taps]/fs)
+    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*2200*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 2500*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, 1200*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     
@@ -436,11 +436,11 @@ def transmit(bits, dusb_out):
 
   time.sleep(1)
 
-  for packet in packetize(bits):
+  for packet in packetize(bits, rs=reedsolo.RSCodec(30)):
     Qout.put("KEYON")
     Qout.put(afsk1200(packet)*.3, fs_usb)
     Qout.put("KEYOFF")
-    Qout.put(np.zeros(fs_usb//divisor))
+    Qout.put(np.zeros(fs_usb//4))
   Qout.put("EOT")
 
   play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
