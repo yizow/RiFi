@@ -18,6 +18,8 @@ from scipy import integrate
 
 import operator
 
+import Encoding
+
 def printDevNumbers(p):
     N = p.get_device_count()
     for n in range(0,N):
@@ -32,14 +34,16 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
+    speed = 2400
+    diff = 2000
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
-    upsample = lcm((1200, fs))
-    ratio = upsample/1200
+    upsample = lcm((speed, fs))
+    ratio = upsample/speed
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*1700-2*np.pi*500*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*3200-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -59,13 +63,13 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # your code here
     taps = fs/600-1
     bandpass = signal.firwin(taps, 600, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*2200*np.r_[0.0:taps]/fs)
+    spacepass = bandpass * np.exp(1j*2*np.pi*2500*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*7500*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 1200*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, 2500*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     
@@ -406,64 +410,38 @@ def checksum(bits):
   return bitarray.bitarray(np.binary_repr(total, width=8))
 
 
-def findPacketBuffer(eBits):
+def transmit(bits):
   dusb_in = 2
   dusb_out = 2
   din = 9
   dout = 9
 
-  output = []
+  s = serial.Serial(port='/dev/ttyUSB0')
+  s.setDTR(0)
 
-  for divisor in [12]:
-    correct = 0
-    for _ in range(1):
-      s = serial.Serial(port='/dev/ttyUSB0')
-      s.setDTR(0)
+  Qout = Queue.Queue()
+  cQout = Queue.Queue()
+  p = pyaudio.PyAudio()
 
-      Qin = Queue.Queue()
-      cQin = Queue.Queue()
-      Qout = Queue.Queue()
-      cQout = Queue.Queue()
-      p = pyaudio.PyAudio()
+  fs_usb = 48e3
 
-      fs_usb = 48e3
+  time.sleep(1)
 
-      t_rec = threading.Thread(target = record_audio,   args = (Qin, cQin, p, fs_usb, dusb_in, 512))
-      t_rec.start()
+  for packet in packetize(bits):
+    Qout.put("KEYON")
+    Qout.put(afsk1200(packet)*.3, fs_usb)
+    Qout.put("KEYOFF")
+    Qout.put(np.zeros(fs_usb//divisor))
+  Qout.put("EOT")
+
+  play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
+
+  while not(Qout.empty()) :
       time.sleep(1)
 
-      for packet in packetize(eBits):
-        Qout.put("KEYON")
-        Qout.put(afsk1200(packet)*.3, fs_usb)
-        Qout.put("KEYOFF")
-        Qout.put(np.zeros(fs_usb//divisor))
-      Qout.put("EOT")
+  time.sleep(1)
 
-      play_audio(Qout, cQout, p, fs_usb, dusb_out, s,0.2)
-
-      while not(Qout.empty()) :
-          time.sleep(1)
+  p.terminate()
+  s.close()
 
 
-      time.sleep(1)
-      cQin.put('EOT')
-      time.sleep(2) # give time for the thread to get killed
-
-
-      p.terminate()
-      s.close()
-
-      recorded = []
-      while not (Qin.empty()):
-          recorded.append(Qin.get())
-
-      data = np.array(recorded).flatten()
-      demod = nc_afsk1200Demod(data, fs_usb)
-      idx = PLL(demod, fs=fs_usb)
-      samples = bitarray.bitarray([bit >= 0 for bit in np.array(demod)[idx]])
-      bits = NRZI2NRZ(samples)
-      packets = findPackets(bits)
-      decoded = reduce(operator.add, packets, bitarray.bitarray())
-      correct += decoded == eBits
-    output.append(correct*1.0/5)
-  return output

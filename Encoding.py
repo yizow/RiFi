@@ -148,6 +148,7 @@ tableLuminanceDC = {
   7: [0x09],
   8: [0x0A],
   9: [0x0B],
+  10: [0x0C],
 }
 
 tableChrominanceDC = {
