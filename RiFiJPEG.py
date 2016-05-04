@@ -99,10 +99,8 @@ def PSNR(im_truth, im_test, maxval=255.):
     mse = np.linalg.norm(im_truth.astype(np.float64) - im_test.astype(np.float64))**2 / np.prod(np.shape(im_truth))
     return 10 * np.log10(maxval**2 / mse)
 
-def isGreyscale(img):
-    if np.array_equal(img[:,:,0], img[:,:,1]) and np.array_equal(img[:,:,0], img[:,:,2]) and np.array_equal(img[:,:,1], img[:,:,2]):
-        return True
-    return False
+def isGrayscale(img, THRESH=25.):
+    return PSNR(img, np.dstack((img[:,:,0], img[:,:,0], img[:,:,0]))) > THRESH
 
 class JPEGlib(object):
     # Standard-specified Luminosity Table
