@@ -410,13 +410,9 @@ def checksum(bits):
   return bitarray.bitarray(np.binary_repr(total, width=8))
 
 
-def transmit(bits):
-  dusb_in = 2
-  dusb_out = 2
-  din = 9
-  dout = 9
+def transmit(bits, dusb_out):
 
-  s = serial.Serial(port='/dev/ttyUSB0')
+  s = serial.Serial(port='COM3')
   s.setDTR(0)
 
   Qout = Queue.Queue()
