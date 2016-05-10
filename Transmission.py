@@ -94,24 +94,40 @@ def PLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
     #          idx - array of indexes to sample at
     #
     # Your code here
-    old_settings = np.seterr(over='ignore')
+    # old_settings = np.seterr(over='ignore')
     
-    counter = np.int32(0)
-    inc = np.int32(2**32*baud/float(fs))
-    one = np.int32(1)
-    idx = np.array([])
+    # counter = np.int32(0)
+    # inc = np.int32(2**32*baud/float(fs))
+    # one = np.int32(1)
+    # idx = np.array([])
     
-    for i in xrange(1, len(NRZa)):
-        counter *= one if np.sign(NRZa[i]) == np.sign(NRZa[i-1]) else a
-        counter = np.int32(counter)
+    # for i in xrange(1, len(NRZa)):
+    #     counter *= one if np.sign(NRZa[i]) == np.sign(NRZa[i-1]) else a
+    #     counter = np.int32(counter)
         
-        old_counter = counter
-        counter += inc
-        if (old_counter > 0) and (counter < 0):
-            idx = np.append(idx, i)
+    #     old_counter = counter
+    #     counter += inc
+    #     if (old_counter > 0) and (counter < 0):
+    #         idx = np.append(idx, i)
     
-    np.seterr(**old_settings)
-    return idx 
+    # np.seterr(**old_settings)
+    # return idx 
+
+
+    idx = []
+    increment = 2**32 * baud / fs 
+    counter = np.int32(increment)
+    
+    for i in range(1, len(NRZa)):
+        crossing = np.sign(NRZa[i]) != np.sign(NRZa[i-1])
+        if crossing:
+            counter = int(a*counter)
+        counter += increment
+        if counter >= 2**31:
+            counter = np.int32(counter)
+            idx.append(i)
+
+    return np.array(idx).astype(int)
     
 def mafsk1200(bits, fs = 48000, baud = 1200, fd=1000, fc=2700):
     # the function will take a bitarray of bits and will output an AFSK1200 modulated signal of them, sampled at fs
@@ -555,7 +571,7 @@ def testTransmit(eBits, debug=False):
 
 
 
-def findPackets(bits, rs):
+def findPackets(bits, rs=reedsolo.RSCodec(30)):
   if len(bits) == 0:
     return []
   flag = "01111110"
@@ -603,11 +619,83 @@ def findPackets(bits, rs):
       break
   return packets
                 
+def findPackets2(bits, rs=reedsolo.RSCodec(30)):
+        # function take a bitarray and looks for AX.25 packets in it. 
+        # It implements a 2-state machine of searching for flag or collecting packets
+                
+        flg = bitarray.bitarray([0,1,1,1,1,1,1,0])
+        packets = []
+        n = 0
+        pktcounter = 0
+        packet = []
+        state = 'search'
+        
+        # Loop over bits
+        while (n < len(bits)-7) :
+            
+            # default state is searching for packets
+            if state is 'search':
+                
+                # look for 1111110, because can't be sure if the first zero is decoded
+                # well if the packet is not padded.
+                if bits[n:n+7] == flg[1:]:
+                    
+                    # flag detected, so switch state to collecting bits in a packet
+                    # start by copying the flag to the packet
+                    # start counter to count the number of bits in the packet
+                    state = 'pkt'
+                    packet=flg.copy()
+                    pktcounter = 8                    
+                    # Advance to the end of the flag
+                    n = n + 7
+                else:
+                    # flag was not found, advance by 1
+                    n = n + 1            
+        
+            # state is to collect packet data. 
+            elif state is 'pkt':
+                
+                # Check if we reached a flag by comparing with 0111111
+                # 6 times ones is not allowed in a packet, hence it must be a flag (if there's no error)
+                if bits[n:n+7] == flg[:7]:
+                    # Flag detected, check if packet is longer than some minimum
+                    if pktcounter > 240:
+                        # End of packet reached! append packet to list and switch to searching state
+                        # We don't advance pointer since this our packet might have been
+                        # flase detection and this flag could be the beginning of a real packet
+                        state = 'search'
+                        packet.extend(flg)
+                        p = packet.copy()
+                        p = ax25.bit_unstuff(p[8:-8])
+                        try:
+                          p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+                          p = p[:-8]#ignoring checksum logic for now
+                          packets.append(p)
+                        except:
+                          state = 'search'
+                    else:
+                        # packet is too short! false alarm. Keep searching 
+                        # We don't advance pointer since this this flag could be the beginning of a real packet
+                        state = 'search'
+                # No flag, so collect the bit and add to the packet
+                else:
+                    # check if packet is too long... if so, must be false alarm
+                    if pktcounter < 2680:
+                        # Not a false alarm, collect the bit and advance pointer                        
+                        packet.append(bits[n])
+                        pktcounter = pktcounter + 1
+                        n = n + 1
+                    else:  
+                        #runaway packet, switch state to searching, and advance pointer
+                        state = 'search'
+                        n = n + 1
+        return packets
 
-def packetize(bitstream, rs):
+
+def packetize(bitstream, rs=reedsolo.RSCodec(30)):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
-  infoSize = 8*220
+  infoSize = 8*200
   flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
   b = bitstream
   packets = []
@@ -620,6 +708,21 @@ def packetize(bitstream, rs):
     b = b[infoSize:]
     padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
     packets.append(NRZ2NRZI(padded))
+  return packets
+
+def justPacketize(bitstream):
+  infoSize = 8*200
+  b = bitstream
+  packets = []
+  while len(b) > 0:
+    bits = b[:infoSize]
+    # bits += checksum(bits)
+    # print "original", bits
+    # bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
+    # print "ecced   ", bits
+    b = b[infoSize:]
+    # padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
+    packets.append(bits)
   return packets
 
 def checksum(bits):
@@ -709,4 +812,5 @@ def deStreamify(bitstream):
 
   Cr = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
 
-  return header, Y, Cb, Cr
+  # return header, Y, Cb, Cr
+  return Y, Cb, Cr
