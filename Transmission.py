@@ -339,7 +339,7 @@ def NRZ2NRZI(NRZ):
 
 def NRZI2NRZ(NRZI, current = True):
     
-    NRZ = NRZI.copy() 
+    NRZ = NRZI[:]#NRZI.copy() 
     
     for n in range(0,len(NRZI)):
         NRZ[n] = NRZI[n] == current
@@ -489,6 +489,7 @@ def record_audio( queue,ctrlQ, p, fs ,dev,chunk=512):
         try:  # when the pyaudio object is distroyed stops
             data_str = istream.read(chunk) # read a chunk of data
         except:
+            print('reeee')
             break
         data_flt = np.fromstring( data_str, 'float32' ) # convert string to float
         queue.put( data_flt ) # append to list
