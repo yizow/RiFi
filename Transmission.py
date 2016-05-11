@@ -22,7 +22,7 @@ import Encoding
 
 import reedsolo
 MULTI = True
-
+FLAG_NUM = 3
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -661,18 +661,22 @@ def findPackets2(bits, rs=reedsolo.RSCodec(30)):
                 # 6 times ones is not allowed in a packet, hence it must be a flag (if there's no error)
                 if bits[n:n+7] == flg[:7]:
                     # Flag detected, check if packet is longer than some minimum
-                    if pktcounter > 240:
+                    if pktcounter > 180:
                         # End of packet reached! append packet to list and switch to searching state
                         # We don't advance pointer since this our packet might have been
                         # flase detection and this flag could be the beginning of a real packet
                         state = 'search'
                         packet.extend(flg)
                         p = packet.copy()
-                        p = ax25.bit_unstuff(p[8:-8])
                         try:
-                          p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
-                          p = p[:-8]#ignoring checksum logic for now
-                          packets.append(p)
+                          # p = ax25.bit_unstuff(p[8:-8])
+                          # p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+                          p = checkPacket(p, FLAG_NUM, FLAG_NUM)
+                          if p:
+                            p = p[:-8]#ignoring checksum logic for now
+                            packets.append(p)
+                          else:
+                            state = 'search'
                         except:
                           state = 'search'
                     else:
@@ -698,12 +702,15 @@ def packetize(bitstream, rs=reedsolo.RSCodec(30)):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
   infoSize = 8*200
-  flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
+  flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(FLAG_NUM,)).tolist())
   b = bitstream
   packets = []
   while len(b) > 0:
     bits = b[:infoSize]
     bits += checksum(bits)
+    # if len(bits) < 200:
+    #   bits += bitarray.bitarray("0110"*((1600 - len(bits))//4))
+    #   print "length", len(bits)
     # print "original", bits
     bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
     # print "ecced   ", bits
@@ -778,9 +785,10 @@ def transmit(bits, dusb_out):
   p.terminate()
   s.close()
 
-
-def bitStreamify(header, Y, Cb, Cr):
-  toSend = bitarray.bitarray()
+# size is a tuple (length, width)
+def bitStreamify(size, Y, Cb, Cr):
+  toSend = bitarray.bitarray(np.binary_repr(size[0], width=16))
+  toSend += bitarray.bitarray(np.binary_repr(size[1], width=16))
   # start = bitarray.bitarray("1111111111011000")
   # end = bitarray.bitarray("1111111111011001")
   # toSend = start + header + end
@@ -790,7 +798,6 @@ def bitStreamify(header, Y, Cb, Cr):
   return toSend
 
 def deStreamify(bitstream):
-  bits = iter(bitstream)
   # startMarker = []
   # for _ in range(16):
   #   startMarker.append(bits.next())
@@ -807,7 +814,9 @@ def deStreamify(bitstream):
   #     header.append(bits.next())
 
   # header = header[:-16]
-
+  size = (int(bitstream[:16].to01(), 2), int(bitstream[16:32].to01(), 2))
+  bitstream = bitstream[32:]
+  bits = iter(bitstream)
   Y = Encoding.decode(bits, Encoding.huffmanRootLuminanceDC, Encoding.huffmanRootLuminanceAC)
 
   Cb = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
@@ -815,7 +824,29 @@ def deStreamify(bitstream):
   Cr = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
 
   # return header, Y, Cb, Cr
-  return Y, Cb, Cr
+  return size, Y, Cb, Cr
 
 def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(30)):
-  p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+  # print leftFlag, rightFlag, bitstream[:16].to01(), bitstream[-16:].to01()
+  if leftFlag <= 0 or rightFlag <= 0:
+    # print "out of flag"
+    return None
+  try:
+    p = bitstream.copy()
+    p = ax25.bit_unstuff(p[8:-8])
+    p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+    # print "decoded"
+    return p
+  except:
+    # print "decoding failed"
+    p = bitstream.copy()
+    p = checkPacket(p[8:], leftFlag - 1, rightFlag)
+    if p:
+      # print "gone left"
+      return p
+    p = checkPacket(p[:-8], leftFlag, rightFlag - 1)
+    if p:
+      # print "gone right"
+      return p
+    # print "recursion failed"
+    return None
