@@ -22,7 +22,8 @@ import Encoding
 
 import reedsolo
 MULTI = True
-
+FLAG_NUM = 3
+HEADER_FORMAT = [16, 16, 16, 16, 16, 16, 8, 8, 8]
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -47,7 +48,7 @@ def afsk1200(bits, fs = 48000):
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*(2400+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*(1200+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -67,8 +68,8 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # your code here
     taps = fs/1200-1
     bandpass = signal.firwin(taps, 1200, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*2400*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*4800*np.r_[0.0:taps]/fs)
+    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*3600*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
@@ -661,18 +662,22 @@ def findPackets2(bits, rs=reedsolo.RSCodec(30)):
                 # 6 times ones is not allowed in a packet, hence it must be a flag (if there's no error)
                 if bits[n:n+7] == flg[:7]:
                     # Flag detected, check if packet is longer than some minimum
-                    if pktcounter > 240:
+                    if pktcounter > 180:
                         # End of packet reached! append packet to list and switch to searching state
                         # We don't advance pointer since this our packet might have been
                         # flase detection and this flag could be the beginning of a real packet
                         state = 'search'
                         packet.extend(flg)
                         p = packet.copy()
-                        p = ax25.bit_unstuff(p[8:-8])
                         try:
-                          p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
-                          p = p[:-8]#ignoring checksum logic for now
-                          packets.append(p)
+                          # p = ax25.bit_unstuff(p[8:-8])
+                          # p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+                          p = checkPacket(p, FLAG_NUM, FLAG_NUM)
+                          if p:
+                            p = p[:-8]#ignoring checksum logic for now
+                            packets.append(p)
+                          else:
+                            state = 'search'
                         except:
                           state = 'search'
                     else:
@@ -698,12 +703,15 @@ def packetize(bitstream, rs=reedsolo.RSCodec(30)):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
   infoSize = 8*200
-  flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(3,)).tolist())
+  flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(FLAG_NUM,)).tolist())
   b = bitstream
   packets = []
   while len(b) > 0:
     bits = b[:infoSize]
     bits += checksum(bits)
+    # if len(bits) < 200:
+    #   bits += bitarray.bitarray("0110"*((1600 - len(bits))//4))
+    #   print "length", len(bits)
     # print "original", bits
     bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
     # print "ecced   ", bits
@@ -778,9 +786,11 @@ def transmit(bits, dusb_out):
   p.terminate()
   s.close()
 
-
+# size is a tuple (length, width)
 def bitStreamify(header, Y, Cb, Cr):
   toSend = bitarray.bitarray()
+  for bitLength, value in zip(HEADER_FORMAT, header):
+    toSend += bitarray.bitarray(np.binary_repr(value, width=bitLength))
   # start = bitarray.bitarray("1111111111011000")
   # end = bitarray.bitarray("1111111111011001")
   # toSend = start + header + end
@@ -790,24 +800,14 @@ def bitStreamify(header, Y, Cb, Cr):
   return toSend
 
 def deStreamify(bitstream):
+  header = []
+  index = 0
+  for bitLength in HEADER_FORMAT:
+    header.append(int(bitstream[index:index + bitLength].to01(), 2))
+    index += bitLength
+
+  bitstream = bitstream[index:]
   bits = iter(bitstream)
-  # startMarker = []
-  # for _ in range(16):
-  #   startMarker.append(bits.next())
-  # startMarker = bitarray.bitarray(startMarker)
-  # for _ in range(16):
-  #   if startMarker.to01() == "1111111111011000":
-  #     break
-  #   startMarker.pop(0)
-  #   startMarker.append(bits.next())
-  # header = bitarray.bitarray()
-  # for _ in range(16):
-  #   header.append(bits.next())
-  #   while header[-16:].to01() != "1111111111011001":
-  #     header.append(bits.next())
-
-  # header = header[:-16]
-
   Y = Encoding.decode(bits, Encoding.huffmanRootLuminanceDC, Encoding.huffmanRootLuminanceAC)
 
   Cb = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
@@ -815,7 +815,29 @@ def deStreamify(bitstream):
   Cr = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
 
   # return header, Y, Cb, Cr
-  return Y, Cb, Cr
+  return header, Y, Cb, Cr
 
 def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(30)):
-  p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+  # print leftFlag, rightFlag, bitstream[:16].to01(), bitstream[-16:].to01()
+  if leftFlag <= 0 or rightFlag <= 0:
+    # print "out of flag"
+    return None
+  try:
+    p = bitstream.copy()
+    p = ax25.bit_unstuff(p[8:-8])
+    p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
+    # print "decoded"
+    return p
+  except:
+    # print "decoding failed"
+    p = bitstream.copy()
+    p = checkPacket(p[8:], leftFlag - 1, rightFlag)
+    if p:
+      # print "gone left"
+      return p
+    p = checkPacket(p[:-8], leftFlag, rightFlag - 1)
+    if p:
+      # print "gone right"
+      return p
+    # print "recursion failed"
+    return None
