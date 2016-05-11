@@ -23,6 +23,7 @@ import Encoding
 import reedsolo
 MULTI = True
 FLAG_NUM = 3
+HEADER_FORMAT = [16, 16, 16, 16, 16, 16, 8, 8, 8]
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -47,7 +48,7 @@ def afsk1200(bits, fs = 48000):
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*(2400+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*(1200+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -67,8 +68,8 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # your code here
     taps = fs/1200-1
     bandpass = signal.firwin(taps, 1200, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*2400*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*4800*np.r_[0.0:taps]/fs)
+    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*3600*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
@@ -786,9 +787,10 @@ def transmit(bits, dusb_out):
   s.close()
 
 # size is a tuple (length, width)
-def bitStreamify(size, Y, Cb, Cr):
-  toSend = bitarray.bitarray(np.binary_repr(size[0], width=16))
-  toSend += bitarray.bitarray(np.binary_repr(size[1], width=16))
+def bitStreamify(header, Y, Cb, Cr):
+  toSend = bitarray.bitarray()
+  for bitLength, value in zip(HEADER_FORMAT, header):
+    toSend += bitarray.bitarray(np.binary_repr(value, width=bitLength))
   # start = bitarray.bitarray("1111111111011000")
   # end = bitarray.bitarray("1111111111011001")
   # toSend = start + header + end
@@ -798,24 +800,13 @@ def bitStreamify(size, Y, Cb, Cr):
   return toSend
 
 def deStreamify(bitstream):
-  # startMarker = []
-  # for _ in range(16):
-  #   startMarker.append(bits.next())
-  # startMarker = bitarray.bitarray(startMarker)
-  # for _ in range(16):
-  #   if startMarker.to01() == "1111111111011000":
-  #     break
-  #   startMarker.pop(0)
-  #   startMarker.append(bits.next())
-  # header = bitarray.bitarray()
-  # for _ in range(16):
-  #   header.append(bits.next())
-  #   while header[-16:].to01() != "1111111111011001":
-  #     header.append(bits.next())
+  header = []
+  index = 0
+  for bitLength in HEADER_FORMAT:
+    header.append(int(bitstream[index:index + bitLength].to01(), 2))
+    index += bitLength
 
-  # header = header[:-16]
-  size = (int(bitstream[:16].to01(), 2), int(bitstream[16:32].to01(), 2))
-  bitstream = bitstream[32:]
+  bitstream = bitstream[index:]
   bits = iter(bitstream)
   Y = Encoding.decode(bits, Encoding.huffmanRootLuminanceDC, Encoding.huffmanRootLuminanceAC)
 
@@ -824,7 +815,7 @@ def deStreamify(bitstream):
   Cr = Encoding.decode(bits, Encoding.huffmanRootChrominanceDC, Encoding.huffmanRootChrominanceAC)
 
   # return header, Y, Cb, Cr
-  return size, Y, Cb, Cr
+  return header, Y, Cb, Cr
 
 def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(30)):
   # print leftFlag, rightFlag, bitstream[:16].to01(), bitstream[-16:].to01()
