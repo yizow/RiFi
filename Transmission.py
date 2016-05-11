@@ -38,8 +38,8 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
-    speed = 1200
-    diff = 500
+    speed = 2400
+    diff = 1200
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
     upsample = lcm((speed, fs))
@@ -47,7 +47,7 @@ def afsk1200(bits, fs = 48000):
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*1700-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*(2400+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
@@ -65,15 +65,15 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # Returns:
     #     NRZ  
     # your code here
-    taps = fs/600-1
-    bandpass = signal.firwin(taps, 600, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*2200*np.r_[0.0:taps]/fs)
+    taps = fs/1200-1
+    bandpass = signal.firwin(taps, 1200, nyq=fs/2)
+    spacepass = bandpass * np.exp(1j*2*np.pi*2400*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*4800*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 1200*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, 2400*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     
@@ -124,6 +124,7 @@ def PLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
             counter = int(a*counter)
         counter += increment
         if counter >= 2**31:
+            counter -= 2**32
             counter = np.int32(counter)
             idx.append(i)
 
@@ -814,3 +815,6 @@ def deStreamify(bitstream):
 
   # return header, Y, Cb, Cr
   return Y, Cb, Cr
+
+def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(30)):
+  p = bitarray.bitarray(np.unpackbits(rs.decode(bytearray(bitarray.bitarray(p.to01()).tobytes()))).tolist())
