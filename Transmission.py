@@ -22,7 +22,7 @@ import Encoding
 
 import reedsolo
 MULTI = True
-FLAG_NUM = 3
+FLAG_NUM = 11
 HEADER_FORMAT = [16, 16, 16, 16, 16, 16, 8, 8, 8]
 
 def printDevNumbers(p):
@@ -31,7 +31,7 @@ def printDevNumbers(p):
         name = p.get_device_info_by_index(n).get('name')
         print n, name
                 
-def afsk1200(bits, fs = 48000):
+def afsk1200(bits, fs = 48000, baud = 1200, fc = 1700, fd = 500):
     # the function will take a bitarray of bits and will output an AFSK1200 modulated signal of them, sampled at 44100Hz
     #  Inputs:
     #         bits  - bitarray of bits
@@ -39,8 +39,7 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
-    speed = 2400
-    diff = 1200
+    speed = baud
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
     upsample = lcm((speed, fs))
@@ -48,13 +47,13 @@ def afsk1200(bits, fs = 48000):
     newBits = (np.repeat(bits, ratio).astype('float')*2)-1
     
     t = np.r_[0.0:len(newBits)-1]/(upsample)
-    temp = np.cos(2*np.pi*t*(1200+diff)-2*np.pi*diff*integrate.cumtrapz(newBits, dx=1.0/upsample))
+    temp = np.cos(2*np.pi*t*fc-2*np.pi*fd*integrate.cumtrapz(newBits, dx=1.0/upsample))
     sig = temp[::upsample/fs]
     
     return sig
 
 
-def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
+def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0, f1 = 1200, f2=2200, baud = 1200):
     #  non-coherent demodulation of afsk1200
     # function returns the NRZ (without rectifying it)
     # 
@@ -66,15 +65,15 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # Returns:
     #     NRZ  
     # your code here
-    taps = fs/1200-1
-    bandpass = signal.firwin(taps, 1200, nyq=fs/2)
-    spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*3600*np.r_[0.0:taps]/fs)
+    taps = fs/baud-1
+    bandpass = signal.firwin(taps, baud, nyq=fs/2)
+    spacepass = bandpass * np.exp(1j*2*np.pi*f1*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*f2*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 2400*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, baud*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     
@@ -130,8 +129,9 @@ def PLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
             idx.append(i)
 
     return np.array(idx).astype(int)
+        
     
-def mafsk1200(bits, fs = 48000, baud = 1200, fd=1000, fc=2700):
+def mafsk1200(bits, fs = 48000, baud = 1200, fd=775, fc=2250):
     # the function will take a bitarray of bits and will output an AFSK1200 modulated signal of them, sampled at fs
     #  Inputs:
     #         bits  - bitarray of bits
@@ -179,7 +179,7 @@ def mafsk1200(bits, fs = 48000, baud = 1200, fd=1000, fc=2700):
     return sig
                      
 
-def nc_mafsk1200Demod(sig, fs=48000.0, baud=1200, TBW=2.0, fc = 2700, fd = 1000):
+def nc_mafsk1200Demod(sig, fs=48000.0, baud=1200, TBW=2.0, fc = 2250, fd = 775):
     #  non-coherent demodulation of afsk1200
     # function returns the NRZ (without rectifying it)
     # 
@@ -200,7 +200,7 @@ def nc_mafsk1200Demod(sig, fs=48000.0, baud=1200, TBW=2.0, fc = 2700, fd = 1000)
     # your code here
     taps = TBW*fs/1200-1
     taps = N
-    filt = signal.firwin(taps, baud/2, window='hanning', nyq=fs/2)
+    filt = signal.firwin(taps, baud/4, window='hanning', nyq=fs/2)
     #plt.plot(np.fft.fft(filt))
     #plt.plot(filt)
     #f1 = 1200
@@ -323,8 +323,8 @@ def mPLL(NRZa, a = 0.74 , fs = 48000, baud = 1200):
         counter = counter2
     return idx
 
-
-
+    
+    
 
 def NRZ2NRZI(NRZ):
     
@@ -719,6 +719,31 @@ def packetize(bitstream, rs=reedsolo.RSCodec(30)):
     padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
     packets.append(NRZ2NRZI(padded))
   return packets
+
+def packetize2(bitstream, rs=reedsolo.RSCodec(30)):
+  """Converts bitstream to a list of packets following ax.25 protocol
+  """
+  infoSize = 8*200
+  flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,1,1,1,1,0],(FLAG_NUM,)).tolist())
+  b = bitstream
+  packets = []
+  while len(b) > 0:
+    bits = b[:infoSize]
+    bits += checksum(bits)
+    # if len(bits) < 200:
+    #   bits += bitarray.bitarray("0110"*((1600 - len(bits))//4))
+    #   print "length", len(bits)
+    # print "original", bits
+    bits = bitarray.bitarray(np.unpackbits(rs.encode(bytearray(bits.tobytes()))).tolist())
+    # print "ecced   ", bits
+    b = b[infoSize:]
+    padded = flags + bitarray.bitarray(ax25.bit_stuff(bits)) + flags
+    #padded = flags + bits + flags
+    packets.append(NRZ2NRZI(padded))
+  return packets
+
+
+
 
 def justPacketize(bitstream):
   infoSize = 8*200
