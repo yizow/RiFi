@@ -40,8 +40,8 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
-    speed = 1200
-    diff = 500
+    speed = 2400
+    diff = 1200
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
     upsample = lcm((speed, fs))
@@ -67,15 +67,15 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     # Returns:
     #     NRZ  
     # your code here
-    taps = fs/600-1
-    bandpass = signal.firwin(taps, 600, nyq=fs/2)
+    taps = fs/1200-1
+    bandpass = signal.firwin(taps, 1200, nyq=fs/2)
     spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*2200*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*3600*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
     analog = np.abs(spaces)-np.abs(marks)
-    lowpass = signal.firwin(taps, 1200*1.2, nyq=fs/2)
+    lowpass = signal.firwin(taps, 2400*1.2, nyq=fs/2)
     filtered = signal.fftconvolve(analog, lowpass, mode='same')
     NRZ = filtered
     

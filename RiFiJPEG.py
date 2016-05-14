@@ -183,10 +183,15 @@ class IJPEG(JPEGlib):
 
         return rescale(out) if self.rescale else out
 
-def RiFi_preprocess(img, quality):
+def RiFi_preprocess(img, quality, dsfactor=3):
     # Calculating image shape to be even multiples of 8.
     targetsize = img.shape[0] + (8 - (img.shape[0] % 8)) % 8, \
                  img.shape[1] + (8 - (img.shape[1] % 8)) % 8
+
+    targetsize = (targetsize[0]//dsfactor, targetsize[1]//dsfactor)
+    targetsize = targetsize[0] + (8 - (targetsize[0] % 8)) % 8, \
+                 targetsize[1] + (8 - (targetsize[1] % 8)) % 8
+
     subsize = targetsize[0]//2, targetsize[1]//2                 # subsampling by 2x2
     subsize = subsize[0] + (8 - (subsize[0] % 8)) % 8, \
               subsize[1] + (8 - (subsize[1] % 8)) % 8
