@@ -22,9 +22,9 @@ import Encoding
 
 import reedsolo
 MULTI = True
-FLAG_NUM = 3
+FLAG_NUM = 5
 HEADER_FORMAT = [16, 16, 16, 16, 16, 16, 8, 8, 8]
-NUM_ERRORS = 5
+NUM_ERRORS = 20
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -40,8 +40,8 @@ def afsk1200(bits, fs = 48000):
     # Outputs:
     #         sig    -  returns afsk1200 modulated signal
     # your code below:
-    speed = 2400
-    diff = 1200
+    speed = 1200
+    diff = 500
     if type(bits) is bitarray.bitarray:
         bits = np.unpackbits(bits)
     upsample = lcm((speed, fs))
@@ -70,7 +70,7 @@ def nc_afsk1200Demod(sig, fs=48000.0, TBW=2.0):
     taps = fs/1200-1
     bandpass = signal.firwin(taps, 1200, nyq=fs/2)
     spacepass = bandpass * np.exp(1j*2*np.pi*1200*np.r_[0.0:taps]/fs)
-    markpass = bandpass * np.exp(1j*2*np.pi*3600*np.r_[0.0:taps]/fs)
+    markpass = bandpass * np.exp(1j*2*np.pi*2800*np.r_[0.0:taps]/fs)
     spaces = signal.fftconvolve(sig, spacepass, mode='same')
     marks = signal.fftconvolve(sig, markpass, mode='same')
 
@@ -703,7 +703,7 @@ def findPackets2(bits, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
 def packetize(bitstream, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
-  infoSize = 8*200
+  infoSize = 8*230
   flags = bitarray.bitarray(np.tile([0,1,1,1,1,1,1,0],(FLAG_NUM,)).tolist())
   b = bitstream
   packets = []
