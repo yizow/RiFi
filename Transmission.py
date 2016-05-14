@@ -24,6 +24,7 @@ import reedsolo
 MULTI = True
 FLAG_NUM = 3
 HEADER_FORMAT = [16, 16, 16, 16, 16, 16, 8, 8, 8]
+NUM_ERRORS = 5
 
 def printDevNumbers(p):
     N = p.get_device_count()
@@ -574,7 +575,7 @@ def testTransmit(eBits, debug=False):
 
 
 
-def findPackets(bits, rs=reedsolo.RSCodec(30)):
+def findPackets(bits, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
   if len(bits) == 0:
     return []
   flag = "01111110"
@@ -622,7 +623,7 @@ def findPackets(bits, rs=reedsolo.RSCodec(30)):
       break
   return packets
                 
-def findPackets2(bits, rs=reedsolo.RSCodec(30)):
+def findPackets2(bits, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
         # function take a bitarray and looks for AX.25 packets in it. 
         # It implements a 2-state machine of searching for flag or collecting packets
                 
@@ -699,7 +700,7 @@ def findPackets2(bits, rs=reedsolo.RSCodec(30)):
         return packets
 
 
-def packetize(bitstream, rs=reedsolo.RSCodec(30)):
+def packetize(bitstream, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
   """Converts bitstream to a list of packets following ax.25 protocol
   """
   infoSize = 8*200
@@ -765,7 +766,7 @@ def transmit(bits, dusb_out):
 
   time.sleep(1)
 
-  for packet in packetize(bits, rs=reedsolo.RSCodec(30)):
+  for packet in packetize(bits, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
     Qout.put("KEYON")
     if MULTI:
         sig = mafsk1200(packet)
@@ -817,7 +818,7 @@ def deStreamify(bitstream):
   # return header, Y, Cb, Cr
   return header, Y, Cb, Cr
 
-def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(30)):
+def checkPacket(bitstream, leftFlag, rightFlag, rs=reedsolo.RSCodec(NUM_ERRORS*2)):
   # print leftFlag, rightFlag, bitstream[:16].to01(), bitstream[-16:].to01()
   if leftFlag <= 0 or rightFlag <= 0:
     # print "out of flag"
